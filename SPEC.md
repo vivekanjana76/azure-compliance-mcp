@@ -1,0 +1,136 @@
+# SPEC — azure-compliance-mcp
+
+Design spec for the MCP server. This document is the source of truth for the
+tool surface; **update it before adding or changing any tool** (per `CLAUDE.md`,
+the tool count stays at 5–6).
+
+Built with **FastMCP 3.x** (`from fastmcp import FastMCP`). All tools are
+**read-only** — no tool may create, update, or delete an Azure resource.
+
+---
+
+## 1. Tools
+
+Each tool is an async, typed Python function with an accurate docstring; FastMCP
+derives the input schema from the signature and the description from the
+docstring. Client-visible failures raise `ToolError`; internal exceptions are
+masked.
+
+Returns are JSON-serializable structures (typed dataclasses / `TypedDict`),
+shaped to mirror Azure Resource Graph (ARG) rows where applicable.
+
+### 1.1 `check_compliance`
+Report policy compliance state for resources.
+
+- **Params:**
+  - `scope: str | None` — subscription / resource-group / resource id filter (default: all in scope).
+  - `state: Literal["compliant", "non_compliant", "all"] = "non_compliant"` — which states to return.
+  - `resource_type: str | None` — e.g. `microsoft.compute/virtualmachines`.
+- **Returns:** list of `{ resourceId, name, type, complianceState, policyAssignment, lastEvaluated }`.
+- **Notes:** Default surfaces only non-compliant resources (the common question).
+
+### 1.2 `query_resources`
+General resource lookup with structured filters (a guarded subset of ARG/KQL).
+
+- **Params:**
+  - `resource_type: str | None`
+  - `location: str | None`
+  - `tag_filters: dict[str, str] | None`
+  - `name_contains: str | None`
+  - `limit: int = 100`
+- **Returns:** list of ARG-shaped rows `{ id, name, type, location, resourceGroup, tags, subscriptionId }`.
+- **Notes:** Read-only projection only; no mutating KQL operators accepted.
+
+### 1.3 `get_patch_status`
+Patch / update assessment across virtual machines.
+
+- **Params:**
+  - `scope: str | None`
+  - `severity: Literal["critical", "security", "all"] = "all"`
+  - `only_pending: bool = True`
+- **Returns:** list of `{ vmId, name, osType, pendingUpdates, lastAssessed, rebootPending, classifications }`.
+
+### 1.4 `find_orphaned_rbac`
+Find role assignments whose principal (user / group / service principal) no
+longer exists — a common security-hygiene gap.
+
+- **Params:**
+  - `scope: str | None`
+  - `principal_type: Literal["user", "group", "servicePrincipal", "all"] = "all"`
+- **Returns:** list of `{ roleAssignmentId, roleDefinitionName, principalId, principalType, scope, reason }`
+  where `reason` explains why it is considered orphaned (e.g. `principal_not_found`).
+
+### 1.5 `summarize_health`
+Rolled-up infrastructure-health summary across the above signals — intended as
+the agent's "give me the overall picture" entry point.
+
+- **Params:**
+  - `scope: str | None`
+- **Returns:** `{ totals: {...}, compliance: {...}, patching: {...}, rbac: {...}, topFindings: [...] }`
+  — counts plus a short prioritized list of the most important findings.
+
+---
+
+## 2. Provider design (`mock` | `live`)
+
+A single `Provider` protocol abstracts the data layer; the concrete
+implementation is chosen at startup by `--mode` (default `mock`).
+
+```
+providers/
+  base.py     # Provider protocol: async methods backing each tool
+  mock.py     # MockProvider  — seeded synthetic data
+  live.py     # LiveProvider  — Azure Resource Graph
+  factory.py  # get_provider(mode) -> Provider
+```
+
+- **`mock` (default):** Deterministic, seeded synthetic dataset shaped like ARG
+  rows, deliberately including non-compliant resources, pending patches, and
+  orphaned role assignments so every tool returns meaningful data. Requires **no
+  Azure account or credentials** — the repo runs out of the box.
+- **`live`:** Queries real **Azure Resource Graph** via
+  `azure-mgmt-resourcegraph`, authenticating with `DefaultAzureCredential`
+  (`azure-identity`) against the operator's **own** tenant. Strictly read-only.
+
+Tools depend only on the `Provider` protocol, never on a concrete mode, so the
+same tool code serves both.
+
+---
+
+## 3. Transports
+
+FastMCP transport selection via a `--transport` flag:
+
+- **stdio** (default) — local use (e.g. Claude Desktop / IDE). `mcp.run()`.
+  In this mode **stdout is reserved for the protocol**; all logging goes to stderr.
+- **Streamable HTTP** — remote use. `mcp.run(transport="http", host=..., port=...)`,
+  served at `/mcp`. Intended to sit behind **OAuth 2.1** for remote auth.
+- SSE is legacy and not supported.
+
+CLI shape (to be implemented):
+
+```
+uv run server.py [--mode mock|live] [--transport stdio|http] [--host H] [--port P]
+```
+
+---
+
+## 4. Test plan
+
+Tooling: **pytest** + **ruff**.
+
+1. **Provider unit tests** — `MockProvider` returns deterministic, seeded data;
+   each backing method yields the expected ARG-shaped rows, including the
+   intentional non-compliant / orphaned / pending records.
+2. **Tool tests (in-memory)** — exercise tools through an in-memory FastMCP
+   client (no network), asserting schemas, defaults, and filter behavior, with
+   the server bound to the mock provider.
+3. **Error handling** — invalid arguments surface as `ToolError`; internal
+   exceptions are masked, not leaked.
+4. **Contract/schema** — each tool exposes the parameters and return shape
+   documented above (guards against drift from this SPEC).
+5. **Lint/format gate** — `ruff check .` is clean in CI.
+6. **Live mode** — excluded from default CI (needs credentials); covered by an
+   opt-in, manually-run smoke test against a personal tenant.
+
+CI runs on every PR: `uv sync` → `uv run ruff check .` → `uv run pytest`.
