@@ -1,0 +1,18 @@
+[project]
+name = "azure-compliance-mcp"
+version = "0.1.0"
+description = "MCP server for natural-language Azure compliance & infra-health queries"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "azure-identity>=1.25.3",
+    "azure-mgmt-resourcegraph>=8.0.1",
+    "fastmcp>=3.4.2",
+    "mcp[cli]>=1.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.15.18",
+]
