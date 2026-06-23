@@ -44,7 +44,7 @@ uv run server.py
 uv run server.py --transport http
 
 # Inspect with the MCP dev inspector
-uv run fastmcp dev server.py
+uv run fastmcp dev inspector server.py
 ```
 
 ## Development
