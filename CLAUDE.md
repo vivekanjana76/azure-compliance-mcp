@@ -46,6 +46,6 @@ natural language. Built with FastMCP 3.x.
 ## Commands
 - Run (local):  uv run server.py
 - Run (remote): uv run server.py --transport http
-- Inspect:      uv run fastmcp dev server.py
+- Inspect:      uv run fastmcp dev inspector server.py
 - Test:         uv run pytest
 - Lint:         uv run ruff check .
