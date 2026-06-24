@@ -50,6 +50,15 @@ def test_build_query_combined_filters():
     ]
 
 
+def test_build_query_escapes_tag_key_and_value():
+    # Both the key (inside tags[...]) and the value must be escaped, not just
+    # the value — a malicious key cannot break out of the bracket.
+    key, value = 'ev"il', 'va"lue'
+    q = _build_query(ResourceFilter(tag_filters={key: value}, limit=10))
+    assert f"| where tags[{_kql_str(key)}] == {_kql_str(value)}" in q
+    assert _kql_str(key) == r'"ev\"il"'  # the quote in the key is escaped
+
+
 def test_build_query_is_injection_safe():
     malicious = '"; resources | project secret //'
     q = _build_query(ResourceFilter(name_contains=malicious, limit=10))
