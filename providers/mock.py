@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import copy
 
-from providers.base import ResourceRow
+from providers.base import ResourceFilter, ResourceRow
+from providers.filtering import apply_filter
 
 SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -137,6 +138,11 @@ _MOCK_RESOURCES: list[ResourceRow] = [
 class MockProvider:
     """In-memory ``Provider`` backed by the seeded dataset above."""
 
-    async def list_resources(self) -> list[ResourceRow]:
+    async def list_resources(
+        self, resource_filter: ResourceFilter | None = None
+    ) -> list[ResourceRow]:
         # Deep copy so callers cannot mutate the shared fixture.
-        return copy.deepcopy(_MOCK_RESOURCES)
+        rows = copy.deepcopy(_MOCK_RESOURCES)
+        if resource_filter is None:
+            return rows
+        return apply_filter(rows, resource_filter)

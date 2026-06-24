@@ -95,6 +95,14 @@ providers/
 Tools depend only on the `Provider` protocol, never on a concrete mode, so the
 same tool code serves both.
 
+**Filtering.** `list_resources` accepts an optional `ResourceFilter`
+(resource_type / location / tag_filters / name_contains / limit). The mock
+provider applies it in Python; the live provider pushes it into the ARG **KQL**
+query (`where` clauses + `take`), with every user value encoded as an escaped
+string literal (no raw concatenation → injection-safe; ARG is read-only anyway).
+An opt-in contract test asserts the pushed-down path is equivalent to the
+reference Python filter, so the two modes are provably consistent.
+
 ---
 
 ## 3. Transports
@@ -107,7 +115,7 @@ FastMCP transport selection via a `--transport` flag:
   served at `/mcp`. Intended to sit behind **OAuth 2.1** for remote auth.
 - SSE is legacy and not supported.
 
-CLI shape (to be implemented):
+CLI (implemented in `server.py`; default mock + stdio):
 
 ```
 uv run server.py [--mode mock|live] [--transport stdio|http] [--host H] [--port P]
@@ -132,5 +140,9 @@ Tooling: **pytest** + **ruff**.
 5. **Lint/format gate** — `ruff check .` is clean in CI.
 6. **Live mode** — excluded from default CI (needs credentials); covered by an
    opt-in, manually-run smoke test against a personal tenant.
+7. **Provider contract** — the same filter cases run against both providers; each
+   provider's pushed-down filter must equal the reference Python filter over its
+   own unfiltered data. The mock half runs in CI; the live half is opt-in
+   (`RUN_LIVE_TESTS=1`). KQL generation/escaping is unit-tested in CI (no creds).
 
 CI runs on every PR: `uv sync` → `uv run ruff check .` → `uv run pytest`.
