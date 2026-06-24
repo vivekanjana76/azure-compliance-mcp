@@ -5,11 +5,14 @@ the Provider protocol (SPEC §2); the default provider is the offline mock, so
 the server runs with zero Azure setup.
 
 Run (local, stdio):   uv run server.py
+Run (live tenant):    uv run server.py --mode live
+Run (remote, HTTP):   uv run server.py --transport http
 Inspect:              uv run fastmcp dev inspector server.py
 """
 
 from __future__ import annotations
 
+import argparse
 from typing import Literal
 
 from fastmcp import FastMCP
@@ -21,7 +24,8 @@ from query import run_query_resources
 
 mcp = FastMCP("azure-compliance-mcp")
 
-# Default to the offline mock provider (SPEC §2). A --mode CLI arrives later.
+# Default to the offline mock provider (SPEC §2). `--mode` rebinds this in
+# __main__ before the server starts; tools read it dynamically at call time.
 _provider = get_provider("mock")
 
 # Do NOT print() to stdout in stdio mode — logging must go to stderr only
@@ -105,5 +109,33 @@ async def query_resources(
     )
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="azure-compliance-mcp",
+        description="MCP server for Azure compliance & infra-health queries.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["mock", "live"],
+        default="mock",
+        help="data provider: 'mock' (default, offline) or 'live' (Azure Resource Graph).",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="transport: 'stdio' (default, local) or 'http' (Streamable HTTP).",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP host (http only).")
+    parser.add_argument("--port", type=int, default=8000, help="HTTP port (http only).")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    mcp.run()
+    args = _parse_args()
+    # Rebind the module-level provider the tools read at call time.
+    _provider = get_provider(args.mode)
+    if args.transport == "http":
+        mcp.run(transport="http", host=args.host, port=args.port)
+    else:
+        mcp.run()

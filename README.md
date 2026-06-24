@@ -27,7 +27,7 @@ Five read-only tools — see [`SPEC.md`](./SPEC.md) for full contracts:
 The server runs in one of two provider modes, selected with `--mode`:
 
 - **`mock`** (default) — seeded, synthetic, Azure-Resource-Graph-shaped data including deliberately non-compliant resources. **Runs with zero Azure setup.**
-- **`live`** — real Azure Resource Graph against *your own* tenant via `DefaultAzureCredential`.
+- **`live`** — real Azure Resource Graph against *your own* tenant via `DefaultAzureCredential`. Select it with `--mode live` (e.g. after `az login`). In live mode, `query_resources` filters are pushed into the ARG query.
 
 ## Quickstart
 
@@ -39,6 +39,9 @@ uv sync
 
 # Run locally (stdio transport, mock data)
 uv run server.py
+
+# Run against your own Azure tenant (live Resource Graph)
+uv run server.py --mode live
 
 # Run as a remote server (Streamable HTTP)
 uv run server.py --transport http
