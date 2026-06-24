@@ -44,7 +44,8 @@ natural language. Built with FastMCP 3.x.
 - Async for all I/O.
 
 ## Commands
-- Run (local):  uv run server.py
+- Run (local):  uv run server.py            # mock provider, stdio (default)
+- Run (live):   uv run server.py --mode live # real tenant via DefaultAzureCredential
 - Run (remote): uv run server.py --transport http
 - Inspect:      uv run fastmcp dev inspector server.py
 - Test:         uv run pytest

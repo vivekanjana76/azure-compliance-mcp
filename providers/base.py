@@ -6,6 +6,7 @@ mode (mock | live), so the same tool code serves both.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol, TypedDict, runtime_checkable
 
 
@@ -53,10 +54,32 @@ class QueryResultRow(TypedDict):
     subscriptionId: str
 
 
+@dataclass(frozen=True)
+class ResourceFilter:
+    """Structured, read-only filter for ``query_resources`` (SPEC §1.2).
+
+    All set fields combine with AND. ``limit`` of ``None`` means no cap. The mock
+    provider applies this in Python; the live provider pushes it into KQL. The
+    two are equivalent (see the opt-in contract test).
+    """
+
+    resource_type: str | None = None
+    location: str | None = None
+    tag_filters: dict[str, str] | None = None
+    name_contains: str | None = None
+    limit: int | None = None
+
+
 @runtime_checkable
 class Provider(Protocol):
     """Read-only data source backing the tools (SPEC §2)."""
 
-    async def list_resources(self) -> list[ResourceRow]:
-        """Return all resources in scope as ARG-shaped rows."""
+    async def list_resources(
+        self, resource_filter: ResourceFilter | None = None
+    ) -> list[ResourceRow]:
+        """Return ARG-shaped rows, optionally filtered.
+
+        ``resource_filter=None`` returns everything in scope (used by tools that
+        do their own filtering, e.g. check_compliance).
+        """
         ...
