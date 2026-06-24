@@ -18,6 +18,7 @@ SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000001"
 def _vm(
     name: str,
     resource_group: str,
+    location: str,
     tags: dict[str, str],
     extensions: list[str],
     encryption_at_host: bool,
@@ -31,7 +32,7 @@ def _vm(
         type="microsoft.compute/virtualmachines",
         resourceGroup=resource_group,
         subscriptionId=SUBSCRIPTION_ID,
-        location="eastus",
+        location=location,
         tags=tags,
         properties={"extensions": extensions, "encryptionAtHost": encryption_at_host},
     )
@@ -40,6 +41,7 @@ def _vm(
 def _storage(
     name: str,
     resource_group: str,
+    location: str,
     tags: dict[str, str],
     min_tls_version: str,
     public_network_access: str,
@@ -53,7 +55,7 @@ def _storage(
         type="microsoft.storage/storageaccounts",
         resourceGroup=resource_group,
         subscriptionId=SUBSCRIPTION_ID,
-        location="eastus",
+        location=location,
         tags=tags,
         properties={
             "minimumTlsVersion": min_tls_version,
@@ -63,11 +65,14 @@ def _storage(
 
 
 # Seeded fixture. Comments note the intentional gaps each row exercises.
+# Locations are deliberately spread across regions so query_resources location
+# filtering is meaningful: eastus x3, westus x2, westeurope x2.
 _MOCK_RESOURCES: list[ResourceRow] = [
     # Fully compliant prod VM (all controls pass).
     _vm(
         "vm-web-prod-01",
         "rg-prod",
+        "eastus",
         {"env": "prod", "owner": "alice", "costCenter": "CC-1001"},
         ["Microsoft.GuestConfiguration", "AzureMonitorLinuxAgent"],
         True,
@@ -76,6 +81,7 @@ _MOCK_RESOURCES: list[ResourceRow] = [
     _vm(
         "vm-web-prod-02",
         "rg-prod",
+        "eastus",
         {"env": "prod", "owner": "alice", "costCenter": "CC-1001"},
         ["AzureMonitorLinuxAgent"],
         False,
@@ -84,6 +90,7 @@ _MOCK_RESOURCES: list[ResourceRow] = [
     _vm(
         "vm-batch-dev-01",
         "rg-dev",
+        "westus",
         {"env": "dev"},
         [],
         True,
@@ -92,6 +99,7 @@ _MOCK_RESOURCES: list[ResourceRow] = [
     _vm(
         "vm-legacy-01",
         "rg-shared",
+        "westeurope",
         {},
         ["Microsoft.GuestConfiguration"],
         False,
@@ -100,6 +108,7 @@ _MOCK_RESOURCES: list[ResourceRow] = [
     _storage(
         "stprodassets01",
         "rg-prod",
+        "eastus",
         {"env": "prod", "owner": "bob", "costCenter": "CC-2002"},
         "TLS1_2",
         "Disabled",
@@ -108,6 +117,7 @@ _MOCK_RESOURCES: list[ResourceRow] = [
     _storage(
         "stdevscratch01",
         "rg-dev",
+        "westus",
         {"env": "dev", "owner": "carol", "costCenter": "CC-3003"},
         "TLS1_0",
         "Enabled",
@@ -116,6 +126,7 @@ _MOCK_RESOURCES: list[ResourceRow] = [
     _storage(
         "stsharedlogs01",
         "rg-shared",
+        "westeurope",
         {"owner": "dave"},
         "TLS1_1",
         "Enabled",

@@ -41,6 +41,18 @@ class ComplianceResult(TypedDict):
     remediation: str
 
 
+class QueryResultRow(TypedDict):
+    """ARG-shaped projection returned by ``query_resources`` (SPEC §1.2)."""
+
+    id: str
+    name: str
+    type: str
+    location: str
+    resourceGroup: str
+    tags: dict[str, str]
+    subscriptionId: str
+
+
 @runtime_checkable
 class Provider(Protocol):
     """Read-only data source backing the tools (SPEC §2)."""

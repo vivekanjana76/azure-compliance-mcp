@@ -16,6 +16,8 @@ from fastmcp import FastMCP
 
 from compliance import ComplianceResult, run_check_compliance
 from providers import get_provider
+from providers.base import QueryResultRow
+from query import run_query_resources
 
 mcp = FastMCP("azure-compliance-mcp")
 
@@ -67,6 +69,39 @@ async def check_compliance(
         status_filter=status_filter,
         scope=scope,
         resource_type=resource_type,
+    )
+
+
+@mcp.tool
+async def query_resources(
+    resource_type: str | None = None,
+    location: str | None = None,
+    tag_filters: dict[str, str] | None = None,
+    name_contains: str | None = None,
+    limit: int = 100,
+) -> list[QueryResultRow]:
+    """Look up resources with structured, read-only filters.
+
+    All filters are combined with AND. Returns an ARG-shaped projection.
+
+    Args:
+        resource_type: ARG type to match exactly, e.g.
+            "microsoft.storage/storageaccounts".
+        location: Azure region to match exactly, e.g. "eastus".
+        tag_filters: Tags that must all be present with the given values.
+        name_contains: Case-insensitive substring the resource name must contain.
+        limit: Maximum number of rows to return (default 100; must be >= 1).
+
+    Returns:
+        Rows of: id, name, type, location, resourceGroup, tags, subscriptionId.
+    """
+    return await run_query_resources(
+        _provider,
+        resource_type=resource_type,
+        location=location,
+        tag_filters=tag_filters,
+        name_contains=name_contains,
+        limit=limit,
     )
 
 

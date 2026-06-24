@@ -36,12 +36,12 @@ def test_factory_unknown_mode_raises():
         get_provider("bogus")
 
 
-def test_factory_live_seam_exists():
-    # The live seam constructs but is not implemented yet.
+def test_factory_live_returns_live_provider():
+    # Construction is offline and credential-free; list_resources (which hits
+    # Azure) is exercised only by the opt-in manual live test.
     provider = get_provider("live")
     assert isinstance(provider, LiveProvider)
-    with pytest.raises(NotImplementedError):
-        asyncio.run(provider.list_resources())
+    assert isinstance(provider, Provider)  # structural check
 
 
 def test_mock_rows_are_arg_shaped():
