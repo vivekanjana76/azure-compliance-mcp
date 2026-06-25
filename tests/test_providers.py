@@ -64,15 +64,39 @@ def test_mock_includes_untagged_vm():
     assert [r["name"] for r in untagged_vms] == ["vm-legacy-01"]
 
 
-def test_mock_includes_vms_missing_guest_config():
+def test_mock_vm_properties_are_arg_faithful():
+    # Encryption-at-host lives under securityProfile (real ARG shape), not as a
+    # bare top-level bool, and there is no inline `extensions` list (extensions
+    # are separate resources in ARG).
     rows = _resources()
-    missing = [
-        r["name"]
-        for r in rows
-        if r["type"] == "microsoft.compute/virtualmachines"
-        and "Microsoft.GuestConfiguration" not in r["properties"]["extensions"]
-    ]
-    assert set(missing) == {"vm-web-prod-02", "vm-batch-dev-01"}
+    vms = [r for r in rows if r["type"] == "microsoft.compute/virtualmachines"]
+    for vm in vms:
+        assert "extensions" not in vm["properties"]
+        assert isinstance(vm["properties"]["securityProfile"]["encryptionAtHost"], bool)
+
+
+def test_mock_guest_config_states_shape_and_coverage():
+    states = asyncio.run(MockProvider().list_guest_config_states())
+    # Only the two prod VMs have policy data; the others are not_evaluable.
+    by_state = {s["complianceState"] for s in states}
+    assert by_state == {"Compliant", "NonCompliant"}
+    for s in states:
+        assert set(s) == {
+            "resourceId",
+            "policyAssignmentName",
+            "policyDefinitionName",
+            "complianceState",
+        }
+        # ARG lowercases policystate resource ids.
+        assert s["resourceId"] == s["resourceId"].lower()
+        assert "/virtualmachines/" in s["resourceId"]
+
+
+def test_mock_guest_config_states_are_independent_copies():
+    first = asyncio.run(MockProvider().list_guest_config_states())
+    first[0]["complianceState"] = "mutated"
+    second = asyncio.run(MockProvider().list_guest_config_states())
+    assert second[0]["complianceState"] != "mutated"
 
 
 def test_mock_returns_independent_copies():

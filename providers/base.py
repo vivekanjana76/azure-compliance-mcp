@@ -29,7 +29,13 @@ class ResourceRow(TypedDict):
 
 
 class ComplianceResult(TypedDict):
-    """One control evaluation against one resource (a ``check_compliance`` row)."""
+    """One control evaluation against one resource (a ``check_compliance`` row).
+
+    ``status`` is ``"pass" | "fail" | "not_evaluable"`` — the last meaning the
+    signal needed to judge the control is not exposed by the data source, so no
+    verdict is guessed (SPEC §1.1). ``source`` records which read-only data source
+    produced the verdict: ``"arg" | "azure_policy" | "defender"``.
+    """
 
     resourceId: str
     name: str
@@ -37,9 +43,26 @@ class ComplianceResult(TypedDict):
     resourceGroup: str
     subscriptionId: str
     control: str
-    status: str  # "pass" | "fail"
+    status: str  # "pass" | "fail" | "not_evaluable"
+    source: str  # "arg" | "azure_policy" | "defender"
     evidence: str
     remediation: str
+
+
+class PolicyStateRow(TypedDict):
+    """A policy-compliance state from the ARG ``policyresources`` table.
+
+    Mirrors the fields a ``policyresources`` query projects for a policy state
+    record (Azure Policy, including guest-configuration assignment results).
+    Used to evaluate controls that are *not* determinable from a ``resources``
+    row alone (e.g. ``guest_config_extension``; SPEC §1.1).
+    """
+
+    # The resource the assignment targets (ARG lowercases policystate IDs).
+    resourceId: str
+    policyAssignmentName: str
+    policyDefinitionName: str
+    complianceState: str  # e.g. "Compliant" | "NonCompliant"
 
 
 class QueryResultRow(TypedDict):
@@ -81,5 +104,15 @@ class Provider(Protocol):
 
         ``resource_filter=None`` returns everything in scope (used by tools that
         do their own filtering, e.g. check_compliance).
+        """
+        ...
+
+    async def list_guest_config_states(self) -> list[PolicyStateRow]:
+        """Return guest-configuration policy states from ``policyresources``.
+
+        Backs the ``guest_config_extension`` control, whose posture is not in the
+        ``resources`` row. An empty list means no guest-config policy data exists
+        (e.g. nothing assigned), which the control reports as ``not_evaluable``
+        rather than ``pass`` (SPEC §1.1).
         """
         ...

@@ -1,19 +1,37 @@
 """Seeded, synthetic, ARG-shaped data for offline use (SPEC §2).
 
-The dataset is fixed and deterministic. It deliberately includes real gaps — an
-untagged VM, VMs missing the guest-configuration extension, and a mix of
-pass/fail across all five controls — so every tool returns meaningful data with
-zero Azure setup.
+The dataset is fixed and deterministic. ``properties`` are shaped like real Azure
+Resource Graph rows (storage ``minimumTlsVersion`` / ``publicNetworkAccess``, VM
+``securityProfile.encryptionAtHost``), so the *same* control-mapping logic in
+``compliance.py`` runs for both mock and live (the cross-mode equivalence
+discipline from #7).
+
+Guest-configuration posture is *not* a ``resources`` field — extensions and
+guest-config assignment results live elsewhere — so it is modeled separately as
+``policyresources`` policy-state rows. VMs with no policy-state row surface as
+``not_evaluable`` (never ``pass``), exactly as live mode behaves with no policy
+assigned.
+
+The fixture deliberately includes real gaps — an untagged VM, weak TLS, public
+network access, host encryption off, and VMs with no guest-config policy data —
+so every control returns a mix of pass / fail / not_evaluable.
 """
 
 from __future__ import annotations
 
 import copy
 
-from providers.base import ResourceFilter, ResourceRow
+from providers.base import PolicyStateRow, ResourceFilter, ResourceRow
 from providers.filtering import apply_filter
 
 SUBSCRIPTION_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _vm_id(name: str, resource_group: str) -> str:
+    return (
+        f"/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{resource_group}"
+        f"/providers/Microsoft.Compute/virtualMachines/{name}"
+    )
 
 
 def _vm(
@@ -21,21 +39,18 @@ def _vm(
     resource_group: str,
     location: str,
     tags: dict[str, str],
-    extensions: list[str],
     encryption_at_host: bool,
 ) -> ResourceRow:
     return ResourceRow(
-        id=(
-            f"/subscriptions/{SUBSCRIPTION_ID}/resourceGroups/{resource_group}"
-            f"/providers/Microsoft.Compute/virtualMachines/{name}"
-        ),
+        id=_vm_id(name, resource_group),
         name=name,
         type="microsoft.compute/virtualmachines",
         resourceGroup=resource_group,
         subscriptionId=SUBSCRIPTION_ID,
         location=location,
         tags=tags,
-        properties={"extensions": extensions, "encryptionAtHost": encryption_at_host},
+        # ARG-faithful: encryption-at-host lives under securityProfile.
+        properties={"securityProfile": {"encryptionAtHost": encryption_at_host}},
     )
 
 
@@ -69,43 +84,42 @@ def _storage(
 # Locations are deliberately spread across regions so query_resources location
 # filtering is meaningful: eastus x3, westus x2, westeurope x2.
 _MOCK_RESOURCES: list[ResourceRow] = [
-    # Fully compliant prod VM (all controls pass).
+    # Fully compliant prod VM (tags present, host encryption on; guest-config
+    # Compliant via policyresources below).
     _vm(
         "vm-web-prod-01",
         "rg-prod",
         "eastus",
         {"env": "prod", "owner": "alice", "costCenter": "CC-1001"},
-        ["Microsoft.GuestConfiguration", "AzureMonitorLinuxAgent"],
         True,
     ),
-    # Tagged, but missing guest-config extension and disk encryption.
+    # Tagged, host encryption off (disk_encryption -> not_evaluable), and
+    # guest-config NonCompliant via policyresources.
     _vm(
         "vm-web-prod-02",
         "rg-prod",
         "eastus",
         {"env": "prod", "owner": "alice", "costCenter": "CC-1001"},
-        ["AzureMonitorLinuxAgent"],
         False,
     ),
-    # Partial tags (no owner/costCenter) and no extensions at all.
+    # Partial tags (no owner/costCenter), host encryption on, NO guest-config
+    # policy data (guest_config_extension -> not_evaluable).
     _vm(
         "vm-batch-dev-01",
         "rg-dev",
         "westus",
         {"env": "dev"},
-        [],
         True,
     ),
-    # The untagged VM: zero tags, no encryption (but has guest config).
+    # The untagged VM: zero tags, host encryption off, no guest-config policy data.
     _vm(
         "vm-legacy-01",
         "rg-shared",
         "westeurope",
         {},
-        ["Microsoft.GuestConfiguration"],
         False,
     ),
-    # Fully compliant storage account (all controls pass).
+    # Fully compliant storage account (all storage controls pass).
     _storage(
         "stprodassets01",
         "rg-prod",
@@ -135,6 +149,27 @@ _MOCK_RESOURCES: list[ResourceRow] = [
 ]
 
 
+def _policy_state(
+    name: str, resource_group: str, compliance_state: str
+) -> PolicyStateRow:
+    # ARG lowercases the resourceId on policystate records.
+    return PolicyStateRow(
+        resourceId=_vm_id(name, resource_group).lower(),
+        policyAssignmentName="guest-config-baseline",
+        policyDefinitionName="[Preview]: Audit machines with guest configuration baseline",
+        complianceState=compliance_state,
+    )
+
+
+# Guest-configuration policy states (the ARG `policyresources` analogue). Only
+# VMs with a row here are evaluable; the other two VMs have no policy data, so
+# guest_config_extension reports not_evaluable for them.
+_MOCK_POLICY_STATES: list[PolicyStateRow] = [
+    _policy_state("vm-web-prod-01", "rg-prod", "Compliant"),
+    _policy_state("vm-web-prod-02", "rg-prod", "NonCompliant"),
+]
+
+
 class MockProvider:
     """In-memory ``Provider`` backed by the seeded dataset above."""
 
@@ -146,3 +181,6 @@ class MockProvider:
         if resource_filter is None:
             return rows
         return apply_filter(rows, resource_filter)
+
+    async def list_guest_config_states(self) -> list[PolicyStateRow]:
+        return copy.deepcopy(_MOCK_POLICY_STATES)
