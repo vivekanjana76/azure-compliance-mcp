@@ -20,14 +20,37 @@ Returns are JSON-serializable structures (typed dataclasses / `TypedDict`),
 shaped to mirror Azure Resource Graph (ARG) rows where applicable.
 
 ### 1.1 `check_compliance`
-Report policy compliance state for resources.
+Evaluate named security/governance controls by inspecting resource
+configuration via Azure Resource Graph (ARG). Honest about provenance and about
+controls it cannot evaluate from available data — it never guesses.
 
-- **Params:**
-  - `scope: str | None` — subscription / resource-group / resource id filter (default: all in scope).
-  - `state: Literal["compliant", "non_compliant", "all"] = "non_compliant"` — which states to return.
-  - `resource_type: str | None` — e.g. `microsoft.compute/virtualmachines`.
-- **Returns:** list of `{ resourceId, name, type, complianceState, policyAssignment, lastEvaluated }`.
-- **Notes:** Default surfaces only non-compliant resources (the common question).
+- **Params:** `control`, `status_filter`, `scope`, `resource_type` (unchanged),
+  except `status_filter` now also accepts `"not_evaluable"`
+  (values: `pass|fail|not_evaluable|all`, default `fail`).
+- **Returns:** list of `{ resourceId, name, type, resourceGroup, subscriptionId,
+  control, status: "pass"|"fail"|"not_evaluable", source, evidence, remediation }`
+  - `source: "arg" | "azure_policy" | "defender"` — which data source produced this finding.
+  - `not_evaluable` rows carry `evidence` explaining why (e.g. "guest-config posture
+    not exposed in ARG resources table") and `remediation` pointing to where to look.
+
+#### Control → source mapping
+| control                  | source        | evaluable from base ARG? |
+|--------------------------|---------------|--------------------------|
+| required_tags            | arg           | yes (resources.tags)     |
+| tls_min_1_2              | arg           | yes (resources.properties) |
+| public_network_access    | arg           | yes (resources.properties) |
+| disk_encryption          | arg           | partial (encryptionAtHost only) |
+| guest_config_extension   | azure_policy  | no — via policyresources/guestconfig |
+
+- **Live behavior:** controls map to the table above. `guest_config_extension`
+  queries the ARG `policyresources` table (guest-config compliance); if no data
+  exists (no policy assigned), it returns `not_evaluable`, not `pass`.
+- **Mock behavior:** the mock dataset is reshaped to be ARG-faithful, so the same
+  mapping logic serves both modes (preserving the cross-mode equivalence discipline).
+- **Notes:** `required_tags` checks `env`, `owner`, `costCenter`. The default call
+  (`control=None`, `status_filter="fail"`) answers "what's actively non-compliant?"
+  and excludes `not_evaluable`; those are reachable via `status_filter="not_evaluable"`
+  and surfaced as a coverage count in `summarize_health`.
 
 ### 1.2 `query_resources`
 General resource lookup with structured filters (a guarded subset of ARG/KQL).
