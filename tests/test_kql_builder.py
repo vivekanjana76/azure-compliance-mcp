@@ -4,7 +4,13 @@ These run in CI (no Azure needed) — they only build query strings.
 """
 
 from providers.base import ResourceFilter
-from providers.live import _PROJECT, _build_query, _kql_str
+from providers.live import (
+    _GUEST_CONFIG_CATEGORY,
+    _PROJECT,
+    _build_guest_config_query,
+    _build_query,
+    _kql_str,
+)
 
 
 def test_kql_str_escapes_quotes_and_backslashes():
@@ -57,6 +63,24 @@ def test_build_query_escapes_tag_key_and_value():
     q = _build_query(ResourceFilter(tag_filters={key: value}, limit=10))
     assert f"| where tags[{_kql_str(key)}] == {_kql_str(value)}" in q
     assert _kql_str(key) == r'"ev\"il"'  # the quote in the key is escaped
+
+
+def test_build_guest_config_query_targets_policyresources():
+    q = _build_guest_config_query()
+    lines = q.splitlines()
+    # Reads the policyresources table (not resources) and filters to policystates.
+    assert lines[0] == "policyresources"
+    assert '| where type =~ "microsoft.policyinsights/policystates"' in lines
+    # The one literal (the policy category) is escaped via _kql_str.
+    assert _kql_str(_GUEST_CONFIG_CATEGORY) in q
+    # Projects the flat PolicyStateRow columns _to_policy_state_row reads.
+    for col in (
+        "resourceId",
+        "policyAssignmentName",
+        "policyDefinitionName",
+        "complianceState",
+    ):
+        assert col in q
 
 
 def test_build_query_is_injection_safe():

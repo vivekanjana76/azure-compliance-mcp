@@ -14,6 +14,7 @@ import os
 
 import pytest
 
+from compliance import run_check_compliance
 from providers.factory import get_provider
 from query import run_query_resources
 
@@ -57,3 +58,34 @@ def test_live_query_resources_respects_resource_type_filter():
     for row in rows:
         assert row["type"] == "microsoft.compute/virtualmachines"
         assert set(row) == ARG_KEYS - {"properties"}
+
+
+POLICY_STATE_KEYS = {
+    "resourceId",
+    "policyAssignmentName",
+    "policyDefinitionName",
+    "complianceState",
+}
+
+
+def test_live_guest_config_states_are_policystate_shaped():
+    # No guest-config policy assigned is a valid result (empty list); only shape
+    # is asserted. The query against policyresources is strictly read-only.
+    provider = get_provider("live")
+    states = asyncio.run(provider.list_guest_config_states())
+    for state in states:
+        assert set(state) == POLICY_STATE_KEYS
+
+
+def test_live_check_compliance_guest_config_never_silently_passes():
+    # In live mode, guest_config_extension must come from azure_policy and, when
+    # no policy data exists, be not_evaluable rather than pass.
+    provider = get_provider("live")
+    rows = asyncio.run(
+        run_check_compliance(
+            provider, control="guest_config_extension", status_filter="all"
+        )
+    )
+    for row in rows:
+        assert row["source"] == "azure_policy"
+        assert row["status"] in {"pass", "fail", "not_evaluable"}

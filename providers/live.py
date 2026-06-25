@@ -21,7 +21,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from providers.base import ResourceFilter, ResourceRow
+from providers.base import PolicyStateRow, ResourceFilter, ResourceRow
 
 _PROJECT = (
     "| project id, name, type, location, resourceGroup, "
@@ -29,6 +29,10 @@ _PROJECT = (
 )
 
 _PAGE_SIZE = 1000
+
+# Guest-configuration policies are categorized "Guest Configuration" in Azure
+# Policy; their compliance shows up in the `policyresources` policystates table.
+_GUEST_CONFIG_CATEGORY = "Guest Configuration"
 
 
 def _kql_str(value: str) -> str:
@@ -69,6 +73,38 @@ def _build_query(resource_filter: ResourceFilter | None) -> str:
     return "\n".join(lines)
 
 
+def _build_guest_config_query() -> str:
+    """Build the read-only ARG ``policyresources`` query for guest-config states.
+
+    Takes no user input, but the one literal (the policy category) is still
+    encoded via ``_kql_str`` to keep the same escaping discipline as the
+    ``resources`` query — there is no way for a value to become query syntax.
+    The query projects flat columns so ``_to_policy_state_row`` reads top-level
+    keys rather than nested ``properties``.
+    """
+    return "\n".join(
+        [
+            "policyresources",
+            '| where type =~ "microsoft.policyinsights/policystates"',
+            f"| where properties.policyDefinitionCategory =~ {_kql_str(_GUEST_CONFIG_CATEGORY)}",
+            "| project resourceId = tolower(tostring(properties.resourceId)),"
+            " policyAssignmentName = tostring(properties.policyAssignmentName),"
+            " policyDefinitionName = tostring(properties.policyDefinitionName),"
+            " complianceState = tostring(properties.complianceState)",
+        ]
+    )
+
+
+def _to_policy_state_row(item: dict[str, Any]) -> PolicyStateRow:
+    """Normalize one projected ``policyresources`` record into a ``PolicyStateRow``."""
+    return PolicyStateRow(
+        resourceId=item.get("resourceId", "") or "",
+        policyAssignmentName=item.get("policyAssignmentName", "") or "",
+        policyDefinitionName=item.get("policyDefinitionName", "") or "",
+        complianceState=item.get("complianceState", "") or "",
+    )
+
+
 def _to_resource_row(item: dict[str, Any]) -> ResourceRow:
     """Normalize one ARG object-array record into a ``ResourceRow``."""
     return ResourceRow(
@@ -100,11 +136,21 @@ class LiveProvider:
     async def list_resources(
         self, resource_filter: ResourceFilter | None = None
     ) -> list[ResourceRow]:
-        return await asyncio.to_thread(self._list_resources_sync, resource_filter)
+        query = _build_query(resource_filter)
+        items = await asyncio.to_thread(self._run_query_sync, query)
+        return [_to_resource_row(item) for item in items]
 
-    def _list_resources_sync(
-        self, resource_filter: ResourceFilter | None
-    ) -> list[ResourceRow]:
+    async def list_guest_config_states(self) -> list[PolicyStateRow]:
+        query = _build_guest_config_query()
+        items = await asyncio.to_thread(self._run_query_sync, query)
+        return [_to_policy_state_row(item) for item in items]
+
+    def _run_query_sync(self, query: str) -> list[dict[str, Any]]:
+        """Run one read-only ARG query, paging through every result.
+
+        Works for any ARG table (``resources``, ``policyresources``, …); the
+        query string decides the table.
+        """
         from azure.mgmt.resourcegraph.models import (
             QueryRequest,
             QueryRequestOptions,
@@ -112,8 +158,7 @@ class LiveProvider:
         )
 
         client = self._ensure_client()
-        query = _build_query(resource_filter)
-        rows: list[ResourceRow] = []
+        items: list[dict[str, Any]] = []
         skip_token: str | None = None
         while True:
             options = QueryRequestOptions(
@@ -125,9 +170,8 @@ class LiveProvider:
             )
             request = QueryRequest(query=query, options=options)
             response = client.resources(request)
-            for item in response.data or []:
-                rows.append(_to_resource_row(item))
+            items.extend(response.data or [])
             skip_token = getattr(response, "skip_token", None)
             if not skip_token:
                 break
-        return rows
+        return items

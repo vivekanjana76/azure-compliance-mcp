@@ -42,30 +42,38 @@ async def check_compliance(
         "public_network_access",
     ]
     | None = None,
-    status_filter: Literal["pass", "fail", "all"] = "fail",
+    status_filter: Literal["pass", "fail", "not_evaluable", "all"] = "fail",
     scope: str | None = None,
     resource_type: str | None = None,
 ) -> list[ComplianceResult]:
-    """Evaluate named security/governance controls against resource configuration.
+    """Evaluate named security/governance controls and report where each verdict came from.
 
-    Inspects each resource's configuration directly (not Azure Policy
-    assignments), so it works without any policy assigned.
+    Honest about provenance: every finding carries a `source`
+    (`arg` | `azure_policy` | `defender`), and controls whose signal is not in
+    the available data report `not_evaluable` rather than guessing. Most controls
+    read the Azure Resource Graph `resources` row directly (no policy assignment
+    required); `guest_config_extension` reads guest-config compliance from the
+    ARG `policyresources` table and is `not_evaluable` when no policy is assigned.
+    `disk_encryption` is partial — it confirms encryption-at-host from ARG but
+    cannot see disk-level/ADE encryption, so a missing host-encryption signal is
+    `not_evaluable`, not `fail`.
 
     Args:
         control: Which control to check, or None to check every applicable
             control. Controls: guest_config_extension, tls_min_1_2,
             required_tags (env/owner/costCenter), disk_encryption,
             public_network_access.
-        status_filter: Return only "fail" rows (default), only "pass" rows, or
-            "all".
+        status_filter: Return only "fail" rows (default), only "pass" rows, only
+            "not_evaluable" rows, or "all". The default ("fail") answers "what's
+            actively non-compliant?" and excludes "not_evaluable".
         scope: Restrict to resources whose ARG resource ID contains this string
             (matches a subscription id, resource group, or resource name).
         resource_type: Restrict to a single ARG type, e.g.
             "microsoft.compute/virtualmachines".
 
     Returns:
-        One row per (resource, applicable control), each with the observed
-        `evidence` and a copy-pasteable `remediation` hint.
+        One row per (resource, applicable control), each with `status`, `source`,
+        the observed `evidence`, and a copy-pasteable `remediation` hint.
     """
     return await run_check_compliance(
         _provider,

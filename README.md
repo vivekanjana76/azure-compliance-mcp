@@ -16,7 +16,7 @@ Five read-only tools — see [`SPEC.md`](./SPEC.md) for full contracts:
 
 | Tool | What it answers |
 |------|-----------------|
-| `check_compliance` | Which resources are (non-)compliant with policy? |
+| `check_compliance` | Which resources are (non-)compliant? Reports each finding's `source` (`arg`/`azure_policy`) and marks controls it can't judge from the data `not_evaluable` instead of guessing. |
 | `query_resources` | Free-form resource lookups (KQL-style filters). |
 | `get_patch_status` | Patch/update state across VMs. |
 | `find_orphaned_rbac` | Role assignments pointing at deleted principals. |
