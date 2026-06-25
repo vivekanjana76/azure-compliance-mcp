@@ -221,7 +221,9 @@ async def run_check_compliance(
     guest_config_states: dict[str, str] = {}
     if "guest_config_extension" in controls:
         states = await provider.list_guest_config_states()
-        guest_config_states = {s["resourceId"].lower(): s["complianceState"] for s in states}
+        guest_config_states = {
+            s["resourceId"].lower(): s["complianceState"] for s in states
+        }
 
     results: list[ComplianceResult] = []
     for row in rows:

@@ -71,12 +71,9 @@ def test_status_filter_not_evaluable_returns_only_not_evaluable():
 
 
 def test_statuses_partition_all():
-    assert (
-        len(_run(status_filter="fail"))
-        + len(_run(status_filter="pass"))
-        + len(_run(status_filter="not_evaluable"))
-        == len(_run(status_filter="all"))
-    )
+    assert len(_run(status_filter="fail")) + len(_run(status_filter="pass")) + len(
+        _run(status_filter="not_evaluable")
+    ) == len(_run(status_filter="all"))
 
 
 # --- source field ------------------------------------------------------------

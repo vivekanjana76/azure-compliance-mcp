@@ -149,7 +149,9 @@ _MOCK_RESOURCES: list[ResourceRow] = [
 ]
 
 
-def _policy_state(name: str, resource_group: str, compliance_state: str) -> PolicyStateRow:
+def _policy_state(
+    name: str, resource_group: str, compliance_state: str
+) -> PolicyStateRow:
     # ARG lowercases the resourceId on policystate records.
     return PolicyStateRow(
         resourceId=_vm_id(name, resource_group).lower(),
