@@ -16,10 +16,12 @@ from compliance import CONTROLS, run_check_compliance
 from providers.mock import MockProvider
 
 # Expected mock totals across all (resource, applicable control) rows:
-#   fail=8, pass=9, not_evaluable=4  ->  21 total.
-TOTAL_FAIL = 8
+#   fail=10, pass=9, not_evaluable=2  ->  21 total.
+# (disk_encryption OFF is a fail; only guest_config with no policy data is
+# not_evaluable.)
+TOTAL_FAIL = 10
 TOTAL_PASS = 9
-TOTAL_NOT_EVALUABLE = 4
+TOTAL_NOT_EVALUABLE = 2
 TOTAL_ALL = TOTAL_FAIL + TOTAL_PASS + TOTAL_NOT_EVALUABLE
 
 
@@ -134,19 +136,28 @@ def test_guest_config_not_evaluable_explains_missing_policy():
     assert all("policyresources" in r["evidence"] for r in rows)
 
 
-def test_disk_encryption_is_partial_pass_or_not_evaluable():
-    # encryption-at-host is the only signal in ARG: ON -> pass, OFF -> not
-    # evaluable (broader posture invisible), never fail.
+def test_disk_encryption_host_level_pass_or_fail():
+    # encryption-at-host is the only signal in ARG: ON -> pass, OFF -> fail
+    # (positive evidence a protection is absent), never not_evaluable.
     rows = _run(control="disk_encryption", status_filter="all")
     status_by_name = {r["name"]: r["status"] for r in rows}
     assert status_by_name == {
         "vm-web-prod-01": "pass",
-        "vm-web-prod-02": "not_evaluable",
+        "vm-web-prod-02": "fail",
         "vm-batch-dev-01": "pass",
-        "vm-legacy-01": "not_evaluable",
+        "vm-legacy-01": "fail",
     }
-    assert "fail" not in {r["status"] for r in rows}
+    assert "not_evaluable" not in {r["status"] for r in rows}
     assert {r["source"] for r in rows} == {"arg"}
+
+
+def test_disk_encryption_fail_evidence_stays_scope_honest():
+    rows = _run(control="disk_encryption", status_filter="fail")
+    assert rows  # there are failing VMs
+    for r in rows:
+        # Honest about what was (not) assessed: host-level only, ADE excluded.
+        assert "Encryption at host is not enabled" in r["evidence"]
+        assert "ADE" in r["evidence"]
 
 
 # --- scope filtering ---------------------------------------------------------

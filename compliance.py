@@ -15,7 +15,8 @@ Control → source mapping:
     tls_min_1_2            arg           resources.properties.minimumTlsVersion
     public_network_access  arg           resources.properties.publicNetworkAccess
     disk_encryption        arg           resources.properties.securityProfile
-                                         .encryptionAtHost (partial — see below)
+                                         .encryptionAtHost (host-level only; OFF
+                                         ⇒ fail, ADE not assessed)
     guest_config_extension azure_policy  policyresources (guest-config states)
 """
 
@@ -117,10 +118,12 @@ def _evaluate(
         return ("pass", SOURCE_ARG, "properties.publicNetworkAccess is Disabled.", "")
 
     if control == "disk_encryption":
-        # Partial control: ARG resources rows expose encryption-at-host only.
-        # Host encryption ON is a definitive pass; OFF is *not* a definitive fail
-        # — disk-level encryption (Azure Disk Encryption, platform/CMK) is not in
-        # the row, so the broader posture is not_evaluable from ARG alone.
+        # Host-level control: ARG resources rows expose encryption-at-host only.
+        # OFF is positive evidence a protection is absent — an actionable fail
+        # that belongs in the default view. The evidence stays honest about
+        # scope (disk-level / Azure Disk Encryption posture is not assessed from
+        # ARG). This differs from guest_config, where the signal is genuinely
+        # absent (not_evaluable).
         sec = props.get("securityProfile") or {}
         if sec.get("encryptionAtHost", False):
             return (
@@ -131,15 +134,11 @@ def _evaluate(
                 "",
             )
         return (
-            "not_evaluable",
+            "fail",
             SOURCE_ARG,
-            "properties.securityProfile.encryptionAtHost is not enabled. ARG "
-            "resources rows expose only encryption-at-host; disk-level encryption "
-            "(Azure Disk Encryption, platform/customer-managed keys) is not visible "
-            "here, so overall disk-encryption posture cannot be determined from the "
-            "resources row alone.",
-            "Check Azure Disk Encryption / disk-level encryption via the VM's disk "
-            "resources or Microsoft Defender for Cloud. To enable host encryption: "
+            "Encryption at host is not enabled "
+            "(properties.securityProfile.encryptionAtHost is false; disk-level/ADE "
+            "posture not assessed from ARG).",
             f"az vm update --name {name} --resource-group {rg} "
             f"--set securityProfile.encryptionAtHost=true",
         )

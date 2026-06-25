@@ -39,7 +39,7 @@ controls it cannot evaluate from available data — it never guesses.
 | required_tags            | arg           | yes (resources.tags)     |
 | tls_min_1_2              | arg           | yes (resources.properties) |
 | public_network_access    | arg           | yes (resources.properties) |
-| disk_encryption          | arg           | partial (encryptionAtHost only) |
+| disk_encryption          | arg           | OFF ⇒ fail (host-level only; ADE not assessed) |
 | guest_config_extension   | azure_policy  | no — via policyresources/guestconfig |
 
 - **Live behavior:** controls map to the table above. `guest_config_extension`
