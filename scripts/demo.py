@@ -34,7 +34,11 @@ from fastmcp import Client  # noqa: E402
 
 import server  # noqa: E402
 
-EVIDENCE_WIDTH = 58
+# Column caps are tuned so every table stays ≤ 80 columns wide — legible in a
+# phone-sized screen recording. The `guest_config_extension` control name forces
+# a 22-col control column, so section 1's evidence is capped tighter to fit.
+EVIDENCE_WIDTH = 32
+WHY_WIDTH = 40
 
 
 def _trim(value: object, width: int) -> str:
@@ -69,12 +73,13 @@ def _render_table(headers: list[str], rows: list[list[str]], caps: list[int]) ->
 
 def _section(number: int, question: str, call: str, note: str = "") -> None:
     title = f" {number}. {question}"
+    call_line = f"    {call}" + (f"   # {note}" if note else "")
+    width = max(len(title), len(call_line)) + 1
     print()
-    print("═" * max(len(title) + 1, len(call) + 5))
+    print("═" * width)
     print(title)
-    suffix = f"   # {note}" if note else ""
-    print(f"    {call}{suffix}")
-    print("═" * max(len(title) + 1, len(call) + 5))
+    print(call_line)
+    print("═" * width)
 
 
 async def main() -> None:
@@ -101,26 +106,29 @@ async def main() -> None:
     print(f"  → {len(fails)} failing findings.")
 
     # 2. What can't be evaluated from the data? (honest, not a fake pass)
+    # Every not_evaluable row is guest_config_extension, so the control is noted
+    # in the caption rather than spending a column on a constant value.
     _section(
         2,
         "What can't be evaluated?",
         'check_compliance(status_filter="not_evaluable")',
     )
     _render_table(
-        ["Resource", "Control", "Source", "Why"],
-        [[r.name, r.control, r.source, _trim(r.evidence, 50)] for r in not_evaluable],
-        caps=[16, 22, 12, 50],
+        ["Resource", "Source", "Why"],
+        [[r.name, r.source, _trim(r.evidence, WHY_WIDTH)] for r in not_evaluable],
+        caps=[18, 14, WHY_WIDTH],
     )
     print(
-        f"  → {len(not_evaluable)} not-evaluable (no signal — never reported as a pass)."
+        f"  → {len(not_evaluable)} guest_config_extension rows — "
+        "no policy data, never a pass."
     )
 
     # 3. Real resources via Azure Resource Graph (ARG-shaped rows)
     _section(3, "Real resources via Azure Resource Graph", "query_resources()")
     _render_table(
-        ["Name", "Type", "Location", "Resource Group"],
-        [[r.name, r.type, r.location, r.resourceGroup] for r in resources],
-        caps=[18, 34, 12, 16],
+        ["Name", "Type", "Resource Group"],
+        [[r.name, r.type, r.resourceGroup] for r in resources],
+        caps=[18, 34, 16],
     )
     print(f"  → {len(resources)} resources.\n")
 
