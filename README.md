@@ -27,6 +27,7 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+. **Runs out of the bo
 
 ```bash
 uv sync                          # install dependencies
+uv run python scripts/demo.py    # fastest look — runs the tools against mock data
 uv run server.py                 # mock data, stdio transport — works immediately
 ```
 
