@@ -9,9 +9,9 @@
 
 An [MCP](https://modelcontextprotocol.io) server, built with **[FastMCP](https://gofastmcp.com) 3.x**, that exposes read-only Azure resource-compliance data so an agent can answer questions like *"which storage accounts allow TLS 1.0?"* or *"which VMs have no disk encryption?"* — each finding tagged with **where the verdict came from** and **whether it could be evaluated at all**.
 
-![Demo](docs/demo.gif)
+<!-- ![Demo](docs/demo.gif) — added in the demo-gif PR -->
 
-<sub>*(demo GIF placeholder — drop a recording at `docs/demo.gif`)*</sub>
+> 🎬 Demo GIF coming in the next commit.
 
 ## Why honest compliance?
 
